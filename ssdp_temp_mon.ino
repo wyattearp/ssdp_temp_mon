@@ -14,14 +14,17 @@
 const char* ssid = CREDS_SSID;
 const char* pass = CREDS_PASS;
 
+#define SSDP_MULTICAST_TTL 2
 IPAddress ssdp_addr(239, 255, 255, 250);
 const uint16_t ssdp_port = 1900;
 WiFiUDP ssdp_server;
+#define M_SEARCH_PATTERN "M-SEARCH"
 
 // the place to store our data
 unsigned char ssdp_packet[UDP_TX_PACKET_MAX_SIZE];
 
 void hexdump_mem(const void* data, size_t size) {
+  Serial.println("===== BEGIN DUMP  =====");
   char ascii[17];
   size_t i, j;
   ascii[16] = '\0';
@@ -87,17 +90,28 @@ void loop() {
 
   if (ssdp_server.available() > 0) {
     // let's turn on the LED so we know something is working
-    digitalWrite(0, HIGH);
-    int len = ssdp_server.peek();
-    Serial.printf("Data available: 0x%08x\n", len);
-    Serial.printf("Data will be stored at 0x%08x\n", &ssdp_packet);
-    memset(ssdp_packet, 0, sizeof(ssdp_packet));
-    len = ssdp_server.parsePacket();
-    Serial.printf("Data available: 0x%08x\n", len);
-    ssdp_server.read(ssdp_packet, len);
-    hexdump_mem(ssdp_packet, len);
-    Serial.println("Done.");
     digitalWrite(0, LOW);
+    while (ssdp_server.available() > 0) {
+      int len = ssdp_server.peek();
+      Serial.printf("Data available: 0x%08x\n", len);
+      Serial.printf("Data will be stored at 0x%08x\n", &ssdp_packet);
+      memset(ssdp_packet, 0, sizeof(ssdp_packet));
+      len = ssdp_server.parsePacket();
+      Serial.printf("Data available: 0x%08x\n", len);
+      ssdp_server.read(ssdp_packet, len);
+      // is this a packet we're interested
+      hexdump_mem(ssdp_packet, len);
+      Serial.printf("memcmp: %d, %d\n", memcmp(M_SEARCH_PATTERN, ssdp_packet, sizeof(M_SEARCH_PATTERN)-1), sizeof(M_SEARCH_PATTERN)-1);
+      hexdump_mem(ssdp_packet, sizeof(M_SEARCH_PATTERN)-1);
+      hexdump_mem(M_SEARCH_PATTERN, sizeof(M_SEARCH_PATTERN)-1);
+      if (memcmp(M_SEARCH_PATTERN, ssdp_packet, sizeof(M_SEARCH_PATTERN)-1) == 0) {
+        // we're interested
+        Serial.println("Done.");
+      }
+    }
+    digitalWrite(0, HIGH);
+    // restart the listening, for some reason ... ?
+    ssdp_server.beginMulticast(WiFi.localIP(), ssdp_addr, ssdp_port);
   } else {
     Serial.println("Waiting for packet...");
   }
