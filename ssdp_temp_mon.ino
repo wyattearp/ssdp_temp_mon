@@ -18,9 +18,17 @@ const char* pass = CREDS_PASS;
 IPAddress ssdp_addr(239, 255, 255, 250);
 const uint16_t ssdp_port = 1900;
 WiFiUDP ssdp_server;
-#define M_SEARCH_PATTERN "M-SEARCH"
 
-// the place to store our data
+#define M_SEARCH_PATTERN "M-SEARCH"
+#define SSDP_DISCOVERY "ssdp:discover"
+// as defined by TemperatureSensor:1 UPNP Template from http://upnp.org/specs/ha/UPnP-ha-TemperatureSensor-v1-Service.pdf
+#define URN_TEMP_SENSOR "urn:schemas-upnp-org:service:TemperatureSensor:1"
+#define URN_RESPONSE "HTTP/1.1 200 OK\r\nCACHE-CONTROL: max-age=1200\r\nEXT:\r\nSERVER:Arduino\r\nST: upnp:rootdevice\r\n"
+#define URN_USN_RESPONSE "USN: uuid:abcdefgh-7dec-11d0-a765-7499692d3040\r\n"
+#define URN_LOCATION "LOCATION: http://";
+
+//dont forget our mac adress USN: uuid:abcdefgh-7dec-11d0-a765-Mac addr "
+// the place to store our data during discovery
 unsigned char ssdp_packet[UDP_TX_PACKET_MAX_SIZE];
 
 void hexdump_mem(const void* data, size_t size) {
@@ -52,6 +60,14 @@ void hexdump_mem(const void* data, size_t size) {
     }
   }
   Serial.println("=====  END DUMP  =====");
+}
+
+String ip_address_to_str(IPAddress address)
+{
+  return String(address[0]) + "." +
+         String(address[1]) + "." +
+         String(address[2]) + "." +
+         String(address[3]);
 }
 
 
@@ -100,12 +116,18 @@ void loop() {
       Serial.printf("Data available: 0x%08x\n", len);
       ssdp_server.read(ssdp_packet, len);
       // is this a packet we're interested
-      hexdump_mem(ssdp_packet, len);
-      Serial.printf("memcmp: %d, %d\n", memcmp(M_SEARCH_PATTERN, ssdp_packet, sizeof(M_SEARCH_PATTERN)-1), sizeof(M_SEARCH_PATTERN)-1);
-      hexdump_mem(ssdp_packet, sizeof(M_SEARCH_PATTERN)-1);
-      hexdump_mem(M_SEARCH_PATTERN, sizeof(M_SEARCH_PATTERN)-1);
-      if (memcmp(M_SEARCH_PATTERN, ssdp_packet, sizeof(M_SEARCH_PATTERN)-1) == 0) {
-        // we're interested
+      if (memcmp(M_SEARCH_PATTERN, ssdp_packet, sizeof(M_SEARCH_PATTERN) - 1) == 0) {
+        // we're interested, is it a discovery we should respond to?
+        char* needle;
+        if ((needle = strstr((const char*)ssdp_packet, (const char*)SSDP_DISCOVERY)) != NULL) {
+          // this is a legit discovery message, is it our kind?
+          if ((needle = strstr((const char*)ssdp_packet, (const char*)URN_TEMP_SENSOR)) != NULL) {
+            // excellent, this is something we should respond to
+            // TODO: perform appropriate response
+            // TODO: provide details about how to do callback
+            hexdump_mem(ssdp_packet, len);
+          }
+        }
         Serial.println("Done.");
       }
     }
